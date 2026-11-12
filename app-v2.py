@@ -47,6 +47,18 @@ DEFAULT_USERS = {
         "role": "client",
         "name": "Beta Construct SRL",
         "cui": "RO98765432"
+    },
+    "51059673": {
+        "user_key": "contactclient",
+        "role": "client",
+        "name": "START UP SOLUTIONS SRL",
+        "cui": "51059673"
+    },
+    "RO51059673": {
+        "user_key": "contactclient",
+        "role": "client",
+        "name": "START UP SOLUTIONS SRL",
+        "cui": "RO51059673"
     }
 }
 
@@ -66,7 +78,10 @@ def load_users():
         return DEFAULT_USERS
     try:
         with open(USERS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            for k, v in DEFAULT_USERS.items():
+                data.setdefault(k, v)
+            return data
     except Exception:
         return DEFAULT_USERS
 
@@ -206,26 +221,40 @@ if not st.session_state.logged_in:
         st.markdown("---")
         
         with st.form("login_form"):
-            username = st.text_input("Utilizator / CUI Societate", placeholder="ex: RO12345678 sau admin")
+            username = st.text_input("Utilizator / CUI Societate", placeholder="ex: RO12345678 sau 51059673")
             pass_val = st.text_input("Parolă de Acces", type="password")
             submit = st.form_submit_button("🔑 Conectare", use_container_width=True)
             
             if submit:
                 clean_user = username.strip()
-                user_record = users.get(clean_user, {})
-                expected_pass = user_record.get("user_key", user_record.get("password", ""))
-                if clean_user in users and expected_pass == pass_val:
-                    st.session_state.logged_in = True
-                    st.session_state.user_info = {
-                        "username": clean_user,
-                        "role": users[clean_user]["role"],
-                        "name": users[clean_user]["name"],
-                        "cui": users[clean_user].get("cui", clean_user)
-                    }
-                    st.success("Autentificare reușită!")
-                    st.rerun()
+                clean_pass = pass_val.strip()
+                
+                # Căutare flexibilă CUI (cu sau fără RO)
+                matched_key = None
+                if clean_user in users:
+                    matched_key = clean_user
+                elif clean_user.upper().startswith("RO") and clean_user[2:] in users:
+                    matched_key = clean_user[2:]
+                elif f"RO{clean_user.upper()}" in users:
+                    matched_key = f"RO{clean_user.upper()}"
+                
+                if matched_key:
+                    user_record = users[matched_key]
+                    expected_pass = user_record.get("user_key", user_record.get("password", "")).strip()
+                    if expected_pass == clean_pass:
+                        st.session_state.logged_in = True
+                        st.session_state.user_info = {
+                            "username": matched_key,
+                            "role": user_record["role"],
+                            "name": user_record["name"],
+                            "cui": user_record.get("cui", matched_key)
+                        }
+                        st.success("Autentificare reușită!")
+                        st.rerun()
+                    else:
+                        st.error("Parolă incorectă!")
                 else:
-                    st.error("Utilizator sau parolă incorectă!")
+                    st.error("Utilizatorul / CUI-ul nu a fost găsit în sistem!")
                     
         st.info("""
         💡 **Conturi demo de test:**
@@ -560,28 +589,40 @@ if is_admin:
     col_admin1, col_admin2 = st.columns(2)
     
     with col_admin1:
-        with st.expander("➕ Adăugare Societate Nouă în Portofoliu"):
+        with st.expander("➕ Adăugare Societate Nouă / Modificare Parolă Firmă"):
             with st.form("add_company_form"):
-                new_cui = st.text_input("CUI Societate Nouă:", placeholder="ex: RO88899911")
-                new_name = st.text_input("Denumire Completă Firmă:", placeholder="ex: Delta Services SRL")
+                new_cui = st.text_input("CUI Societate (existentă sau nouă):", placeholder="ex: 51059673 sau RO51059673")
+                new_name = st.text_input("Denumire Completă Firmă:", placeholder="ex: Nume Client SRL")
                 new_pass = st.text_input("Parolă Acces Client:", type="password")
-                add_sub = st.form_submit_button("Adaugă Client Nou")
+                add_sub = st.form_submit_button("💾 Salvează / Resetează Parolă Firmă")
                 
                 if add_sub:
                     if new_cui and new_name and new_pass:
                         clean_cui = new_cui.strip()
-                        if clean_cui in users:
-                            st.error("Există deja un utilizator cu acest CUI!")
-                        else:
-                            users[clean_cui] = {
-                                "user_key": new_pass.strip(),
-                                "role": "client",
-                                "name": new_name.strip(),
-                                "cui": clean_cui
-                            }
-                            save_users(users)
-                            st.success(f"Societatea **{new_name}** a fost adăugată cu succes!")
-                            st.rerun()
+                        raw_cui = clean_cui.upper().replace("RO", "")
+                        
+                        # Salvează ambele variante de CUI (cu RO și fără RO) pentru recunoaștere 100%
+                        users[clean_cui] = {
+                            "user_key": new_pass.strip(),
+                            "role": "client",
+                            "name": new_name.strip(),
+                            "cui": clean_cui
+                        }
+                        users[raw_cui] = {
+                            "user_key": new_pass.strip(),
+                            "role": "client",
+                            "name": new_name.strip(),
+                            "cui": clean_cui
+                        }
+                        users[f"RO{raw_cui}"] = {
+                            "user_key": new_pass.strip(),
+                            "role": "client",
+                            "name": new_name.strip(),
+                            "cui": clean_cui
+                        }
+                        save_users(users)
+                        st.success(f"Datele și parola pentru societatea **{new_name}** au fost **SALVATE / ACTUALIZATE** cu succes!")
+                        st.rerun()
                     else:
                         st.warning("Toate câmpurile sunt obligatorii.")
 
